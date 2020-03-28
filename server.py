@@ -1,6 +1,7 @@
 
 import uuid
-
+from datetime import datetime
+import time
 
 def fetch_data_from_db (filename):
     #kolejność danych w pliku pracownikow: emp_id, card_id, name, surname
@@ -65,6 +66,22 @@ def save_data_to_db(filename, data):
         file.write("\n")
         data_line = ""
 
+def get_current_time():
+    return time.localtime()
+
+def calculate_worktime(start_time, end_time):
+    """
+    param start_time: start of work time in 'h:m:s' format
+    param end_time: end of work time in 'h:m:s' format
+    return: time spent working in 'h:m:s'
+    """
+    start = start_time.split(":")
+    end = end_time.split(":")
+    hours = int(end[0]) - int(start[0])
+    minutes = int(end[1]) - int(start[1])
+    seconds = int(end[2]) - int(start[2])
+    return "{}:{}:{}".format(hours, minutes, seconds)
+
 
 
 def startUp(card_file, emp_file):
@@ -86,5 +103,8 @@ def loop(data):
 
 
 if __name__ == "__main__":
-
+    start = time.localtime()
     data = startUp("cards.txt", "employees.txt")
+    time.sleep(3)
+    end = time.localtime()
+    print(calculate_worktime(time.strftime("%H:%M:%S", start), time.strftime("%H:%M:%S", end)))
