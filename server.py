@@ -1,8 +1,11 @@
-
 import uuid
 import random
 import time
 import datetime
+import csv
+import glob
+import itertools
+
 
 unregistered_cards = {}
 
@@ -26,7 +29,10 @@ def generate_uuid():
 def delete_RFID(employees, cards, emp_id):
     if (isinstance(emp_id, int)):
         emp_id = str(emp_id)
-    card_id = employees[emp_id][0]
+    if (emp_id in employees):
+        card_id = employees[emp_id][0]
+    else:
+        return False
     if (isinstance(card_id, int)):
         card_id = str(card_id)
     if (emp_id in employees):
@@ -46,12 +52,18 @@ def add_RFID(employees, cards, emp_id, card_id):
     if (isinstance(card_id, int)):
         card_id = str(card_id)
     if (emp_id in employees and card_id in cards):
-        if (employees[emp_id][0] != "-1" or cards[card_id][0] != "-1"):
-            return False
-        else:
+        if (employees[emp_id][0] == "-1" and cards[card_id][0] == "-1"):
             employees[emp_id][0] = card_id
             cards[card_id][0] = emp_id
             return True
+        elif (cards[card_id][0] == "-1"):
+            cards[employees[emp_id][0]] = "-1"
+            employees[emp_id][0] = card_id
+            cards[card_id][0] = emp_id
+            return True
+        else:
+            return False
+
     else:
         return False
 
@@ -74,6 +86,21 @@ def save_data_to_db(filename, data):
 
 def get_current_time():
     return time.localtime()
+
+
+def print_free_cards(cards):
+    for key in cards:
+        if (cards[key][0] == "-1"):
+            print(f"Id wolnej karty: {key}")
+    print("Podaj id karty, którą chcesz przypisać: ")
+    return get_user_input()
+
+
+def print_employees_ids(employees):
+    print("Wybierz pracownika")
+    for key in employees:
+        print(f"Id pracownika: {key} - {employees[key][1]} {employees[key][2]}, id karty: {employees[key][0]}")
+    return get_user_input()
 
 
 def calculate_worktime(start_time, end_time):
@@ -129,11 +156,12 @@ def read_card(cards):
         print(f"Karta niezarejestrowana! Id: {card[0]}")
 
 
+
 def generate_logs(cards, users):
     today = datetime.datetime.now()
-    date = today.strftime("%d-%m-%Y_%H:%M")
+    date = today.strftime("%d-%m-%Y_%H:%M.txt")
     filename = "./logs/log_"+date
-    print(filename)
+    print(f"{filename} log generated.")
     separator = ";"
     data_line = ""
     file = open(filename, "w+")
@@ -148,8 +176,29 @@ def generate_logs(cards, users):
         data_line = ""
 
 
-def generate_work_report(emp_id):
-    pass
+def generate_work_report(emp_id, employees):
+    lines = []
+    flat_lines = list()
+    elems = []
+    if (isinstance(emp_id, int)):
+        emp_id = str(emp_id)
+    if emp_id not in employees:
+        print("Brak takiego użytkownika!Sprawdź id i spróbuj ponownie.")
+        return False
+    filename = f"report_{employees[emp_id][1]}_{employees[emp_id][2]}.csv"
+    with open(filename, 'w+') as report:
+        writer = csv.writer(report)
+        writer.writerow([f'{employees[emp_id][1]}', f'{employees[emp_id][2]}', datetime.date.today()])
+        writer.writerow(['Id karty', 'Godzina wejścia', 'Ilość przepracowanych godzin'])
+        for log in glob.glob("./logs/*.txt"):
+            with open(log, 'r') as read_log:
+                lines.append(read_log.readlines())
+        flat_lines = list(itertools.chain.from_iterable(lines))
+        for line in flat_lines:
+            elems = line.rstrip('\t\n').split(';')
+            if elems[0] == emp_id:
+                writer.writerow([elems[1], elems[4], elems[5]])
+    return True
 
 
 def startUp(card_file, emp_file):
@@ -165,12 +214,50 @@ def display_menu():
           '\n1 - dodanie pracownika'
           '\n2 - przypisanie karty do pracownika'
           '\n3 - zbliżenie karty'
-          '\n4 - usunięcnie katy pracownikowi'
+          '\n4 - usunięcnie karty pracownikowi'
           '\n5 - wygenerowanie raportu czasu pracy dla pracownika'
           '\n0 - zakończenie działania programu')
 
 
+def get_user_input():
+    while True:
+        try:
+            choice = int(input('>'))
+            break
+        except ValueError:
+            print('Podaj liczbę we właściwym formacie')
+    return choice
+
+
 if __name__ == "__main__":
-    data = startUp("cards.txt", "employees.txt")
-    print(data)
+    employees, cards = startUp("cards.txt", "employees.txt")
     display_menu()
+    while True:
+        choice = get_user_input()
+
+        if choice == 1:
+            add_new_user(employees)
+        elif choice == 2:
+            cid = print_free_cards(cards)
+            eid = print_employees_ids(employees)
+            if not add_RFID(employees, cards, eid, cid):
+                print("Coś poszło nie tak! Sprawdź id i spróbuj ponownie.")
+            print(employees)
+            print(cards)
+        elif choice == 3:
+            read_card(cards)
+        elif choice == 4:
+            eid = print_employees_ids(employees)
+            if not delete_RFID(employees, cards, eid):
+                print("Coś poszło nie tak! Sprawdź id i spróbuj ponownie.")
+        elif choice == 5:
+            eid = print_employees_ids(employees)
+            print(generate_work_report(eid, employees))
+        elif choice == 0:
+            generate_logs(cards, employees)
+            reset_cards_timers(cards)
+            save_data_to_db("employees.txt", employees)
+            save_data_to_db("cards.txt", cards)
+            break
+        else:
+            print('Ta opcja nie widnieje w menu')
