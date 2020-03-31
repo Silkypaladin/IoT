@@ -12,7 +12,7 @@ unregistered_cards = {}
 
 def fetch_data_from_db(filename):
     # kolejność danych w pliku pracownikow: emp_id, card_id, name, surname
-    # kolejność danych w pliku kart: card_id, emp_id, enter_time, work_time
+    # kolejność danych w pliku kart: card_id, emp_id, enter_time, leave_time, work_time
     data_dict = dict()
     file = open(filename, "r")
     for line in file:
@@ -57,7 +57,7 @@ def add_RFID(employees, cards, emp_id, card_id):
             cards[card_id][0] = emp_id
             return True
         elif (cards[card_id][0] == "-1"):
-            cards[employees[emp_id][0]] = "-1"
+            cards[employees[emp_id][0]][0] = "-1"
             employees[emp_id][0] = card_id
             cards[card_id][0] = emp_id
             return True
@@ -86,6 +86,13 @@ def save_data_to_db(filename, data):
 
 def get_current_time():
     return time.localtime()
+
+
+def print_cards(cards):
+    for key in cards:
+        print(f"Id karty: {key}")
+    print("Wybierz kartę: ")
+    return get_user_input()
 
 
 def print_free_cards(cards):
@@ -121,6 +128,7 @@ def reset_cards_timers(cards):
     for key, value in cards.items():
         value[1] = "0"
         value[2] = "0"
+        value[3] = "0"
 
 
 def format_time(wtime):
@@ -140,21 +148,27 @@ def add_new_user(users):
 
 def read_card(cards):
     # card to krotka, zerowy element jest kluczem karty, pierwszy to tablica
-    card = random.choice(list(cards.items()))
-    if (card[1][0] != -1):
-        if(card[1][1] == '0'):
+    card_id = print_cards(cards)
+    if (isinstance(card_id, int)):
+        card_id = str(card_id)
+    if card_id in cards:
+        card = cards[card_id]
+    else:
+        return False
+    if (card[0] != "-1"):
+        if(card[1] == '0'):
             # pracownik odbija się po raz pierwszy
-            card[1][1] = format_time(time.localtime())
-            print(f"Pracownik o id: {card[1][0]} wszedł o godzinie: {card[1][1]}")
+            card[1] = format_time(time.localtime())
+            print(f"Pracownik o id: {card[0]} wszedł o godzinie: {card[1]}")
         else:
             # Pracownik odbija się drugi raz - wychodzi
             end_time = format_time(time.localtime())
-            print(f"Pracownik o id: {card[1][0]} wychodzi o godzinie: {end_time}")
-            work_time = calculate_worktime(card[1][1], end_time)
-            card[1][2] = work_time
+            print(f"Pracownik o id: {card[0]} wychodzi o godzinie: {end_time}")
+            work_time = calculate_worktime(card[1], end_time)
+            card[2] = end_time
+            card[3] = work_time
     else:
         print(f"Karta niezarejestrowana! Id: {card[0]}")
-
 
 
 def generate_logs(cards, users):
@@ -189,7 +203,7 @@ def generate_work_report(emp_id, employees):
     with open(filename, 'w+') as report:
         writer = csv.writer(report)
         writer.writerow([f'{employees[emp_id][1]}', f'{employees[emp_id][2]}', datetime.date.today()])
-        writer.writerow(['Id karty', 'Godzina wejścia', 'Ilość przepracowanych godzin'])
+        writer.writerow(['Id karty', 'Godzina wejścia','Godzina wyjścia', 'Ilość przepracowanych godzin'])
         for log in glob.glob("./logs/*.txt"):
             with open(log, 'r') as read_log:
                 lines.append(read_log.readlines())
@@ -197,7 +211,7 @@ def generate_work_report(emp_id, employees):
         for line in flat_lines:
             elems = line.rstrip('\t\n').split(';')
             if elems[0] == emp_id:
-                writer.writerow([elems[1], elems[4], elems[5]])
+                writer.writerow([elems[1], elems[4], elems[5], elems[6]])
     return True
 
 
@@ -252,7 +266,7 @@ if __name__ == "__main__":
                 print("Coś poszło nie tak! Sprawdź id i spróbuj ponownie.")
         elif choice == 5:
             eid = print_employees_ids(employees)
-            print(generate_work_report(eid, employees))
+            generate_work_report(eid, employees)
         elif choice == 0:
             generate_logs(cards, employees)
             reset_cards_timers(cards)
