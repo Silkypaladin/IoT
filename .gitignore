@@ -1,2 +1,5 @@
 *.csv
 *.db
+logs/
+receiver.py
+sender.py
