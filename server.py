@@ -2,9 +2,6 @@ import uuid
 import sqlite3
 import time
 import datetime
-import csv
-import glob
-import itertools
 import paho.mqtt.client as mqtt
 import tkinter
 
@@ -80,6 +77,22 @@ def verify_card(card_id):
     return card_ex
 
 
+def save_unregistered_card(card_id, terminal_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"INSERT INTO unknown_cards VALUES(?, ?, ?)", (card_id, terminal_id, format_time(time.localtime()),))
+    connection.commit()
+    connection.close()
+
+
+def verify_terminal(terminal_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    terminal_registered = cursor.execute(f"SELECT EXISTS (SELECT 1 FROM terminals WHERE terminal_id=?);", (terminal_id,)).fetchone()[0]
+    connection.close()
+    return terminal_registered
+
+
 def format_time(wtime):
     """
     param wtime: time as struct_time instance
@@ -97,40 +110,84 @@ def add_new_user(users):
 
 
 def process_message(client, userdata, message):
-    """TODO-Verify if the terminal is
-     in the db and send proper message to it
-     """
-    emp_id = 0
+    """TODO-Add terminal gui function, verify if the card is attached"""
     message = (str(message.payload.decode("utf-8"))).split(".")
-    if message[0] != "Client connected" and message[0] != "Client disconnected":
-        if (verify_card(message[0])):
-            emp_id = get_employee(message[0])[0]
-            connection = sqlite3.connect(db_name)
-            cursor = connection.cursor()
-            log_time = format_time(time.localtime())
-            cursor.execute(f"INSERT INTO attendance VALUES(?, ?, ?, ?);",
-                           (emp_id, message[1], log_time, datetime.date.today(),))
-            cursor.commit()
-            connection.close()
-        else:
-            print("That card is not attached to anyone! Attach it to activate.")
+    print(message)
+    if not verify_terminal(message[1]):
+        client.publish("terminal/info", "Not registered.")
     else:
-        print(message[0] + " : " + message[1])
+        if message[0] != "Client connected" and message[0] != "Client disconnected":
+            if verify_card(message[0]) == 1:
+                # emp to pracownik, na i=0 jest jego id
+                emp = get_employee(message[0])
+                if emp != []:
+                    emp = get_employee(message[0])[0]
+                    connection = sqlite3.connect(db_name)
+                    cursor = connection.cursor()
+                    log_time = format_time(time.localtime())
+                    cursor.execute(f"INSERT INTO attendance VALUES(?, ?, ?, ?);",
+                               (emp[0], message[1], log_time, datetime.date.today(),))
+                    print("added log")
+                    connection.commit()
+                    connection.close()
+                else:
+                    print("Card not attached to anyone! Please attach it before usage.")
+            else:
+                print("Card not registered!")
+                save_unregistered_card(message[0], message[1])
+        else:
+            print(message[0] + " : " + message[1])
+
+
+# finish
+def generate_logs(emp_id):
+    connection = sqlite3.Connection(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"SELECT * FROM attendance WHERE emp_id={emp_id}")
+    # user_logs is a list of touples (id,terminal,time,date)
+    user_logs = cursor.fetchall()
+    connection.close()
+    time_date = []
+    worktime = 0
+    for log in user_logs:
+        time_date.append((log[2], log[3]))
+    for i in range (0, len(time_date)):
+        #jezeli data sie zgadza to skaczemy o dwa i dodajemy
+        pass
+
+
+def add_terminal(terminal_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"INSERT INTO terminals VALUES(?);", (terminal_id,))
+    connection.commit()
+    connection.close()
+    print("Dodano nowy terminal.")
+
+
+def remove_terminal(terminal_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"DELETE FROM terminals WHERE terminal_id=?;", (terminal_id,))
+    connection.commit()
+    connection.close()
+    print(f"Usunięto terminal o id {terminal_id}.")
 
 
 def connect_to_broker():
     client.connect(broker)
     client.on_message = process_message
     client.loop_start()
-    client.subscribe("worker/name")
+    client.subscribe("employee/name")
 
 
 def disconnect_from_broker():
-    # Disconnet the client.
+    # Disconnect the client.
     client.loop_stop()
     client.disconnect()
 
 
 if __name__ == "__main__":
-    print(verify_card(9))
-    print(get_employee(9))
+    connect_to_broker()
+    window.mainloop()
+    disconnect_from_broker()

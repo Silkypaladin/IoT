@@ -1,5 +1,6 @@
 import paho.mqtt.client as mqtt
 import tkinter
+import time
 
 # Instancja klienta, potrzebne id, funkcja pozwalajaca odbic karte,
 # Terminal id, any string
@@ -14,6 +15,7 @@ window = tkinter.Tk()
 
 def analyze_server_response(client, userdata, message):
     response = str(message.payload.decode('utf-8'))
+    print(response)
     if response == "Not registered.":
         print("Please wait for the server to add you to the database and connect again.")
         client.disconnect()
@@ -31,8 +33,11 @@ def connect_to_broker():
     # Connect to the broker.
     client.connect(broker)
     client.on_message = analyze_server_response
+    client.loop_start()
+    client.subscribe("terminal/info")
     # Send message about connection.
     call_emp("Client connected")
+    call_emp("10")
 
 
 def call_emp(card_id):
@@ -44,3 +49,8 @@ def disconnect_from_broker():
     call_emp("Client disconnected")
     # Disconnet the client.
     client.disconnect()
+
+if __name__ == '__main__':
+    connect_to_broker()
+    window.mainloop()
+    disconnect_from_broker()
