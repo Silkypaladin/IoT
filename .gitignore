@@ -3,3 +3,5 @@
 logs/
 receiver.py
 sender.py
+test.py
+cards2.txt

@@ -12,7 +12,8 @@ def create_database():
     connection = sqlite3.connect("employees.db")
     cursor = connection.cursor()
     cursor.execute(""" CREATE TABLE attendance (
-        emp_id INTEGER PRIMARY KEY,
+        log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        emp_id INTEGER,
         terminal_id TEXT,
         log_time TEXT,
         date TEXT
@@ -31,7 +32,8 @@ def create_database():
     terminal_id STRING PRIMARY KEY
 );""")
     cursor.execute(""" CREATE TABLE unknown_cards (
-        card_id INTEGER PRIMARY KEY,
+        log_id INTEGER PRIMARY KEY AUTOINCREMENT,
+        card_id INTEGER,
         terminal_id TEXT,
         date TEXT
 );""")
