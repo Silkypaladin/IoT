@@ -18,7 +18,7 @@ def delete_RFID(emp_id):
         connection = sqlite3.connect(db_name)
         cursor = connection.cursor()
         cursor.execute(
-            f"UPDATE employees SET card_id=-1 WHERE emp_id={emp_id}")
+            f"UPDATE employees SET card_id=NULL WHERE emp_id={emp_id}")
         connection.commit()
     except sqlite3.Error as error:
         print("Failed to update sqlite table", error)
@@ -109,7 +109,7 @@ def get_user_input():
 
 def process_message(client, userdata, message):
     message = (str(message.payload.decode("utf-8"))).split(".")
-    print(message)
+    # print(message)
     if not verify_terminal(message[1]):
         client.publish("terminal/info", "Not registered.")
         print(f"Do you want to register new terminal with id: {message[1]}")
@@ -124,10 +124,8 @@ def process_message(client, userdata, message):
             if verify_card(message[0]) == 1:
                 # emp to pracownik, na i=0 jest jego id
                 emp = get_employee(message[0])
-                print(emp)
                 if emp != []:
                     emp = emp[0]
-                    print(emp[0])
                     connection = sqlite3.connect(db_name)
                     cursor = connection.cursor()
                     log_time = format_time(time.localtime())
@@ -180,7 +178,6 @@ def add_terminal(terminal_id):
     cursor.execute(f"INSERT INTO terminals VALUES(?);", (terminal_id,))
     connection.commit()
     connection.close()
-    print("Dodano nowy terminal.")
 
 
 def remove_terminal(terminal_id):
@@ -189,7 +186,7 @@ def remove_terminal(terminal_id):
     cursor.execute(f"DELETE FROM terminals WHERE terminal_id=?;", (terminal_id,))
     connection.commit()
     connection.close()
-    print(f"Usunięto terminal o id {terminal_id}.")
+    print(f"Deleted terminal: id {terminal_id}.")
 
 
 def connect_to_broker():
@@ -208,24 +205,83 @@ def disconnect_from_broker():
 def generate_main_window():
     window.geometry("300x200")
     window.title("Server")
-    add_rfid = tkinter.Button(window, text="Add RFID",command=lambda: print("add"))
-    del_rfid = tkinter.Button(window, text="Delete RFID", command=lambda: print("del"))
+    add_rfid = tkinter.Button(window, text="Add RFID",command=lambda: add_RFID_window())
+    del_rfid = tkinter.Button(window, text="Delete RFID", command=lambda: delete_RFID_window())
+    del_term = tkinter.Button(window, text="Delete terminal", command=lambda: del_terminal_window())
     exit = tkinter.Button(window, text="Exit", command=window.quit)
     add_rfid.pack()
     del_rfid.pack()
+    del_term.pack()
     exit.pack()
 
 
 def add_RFID_window():
-    pass
+    add_window = tkinter.Tk()
+    add_window.title("Add RFID")
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    employees = cursor.execute("SELECT * FROM employees;").fetchall()
+    cards = cursor.execute("SELECT * FROM cards;").fetchall()
+    connection.close()
+    emp_labels = []
+    card_labels = []
+    emp_info = tkinter.Label(add_window, text="Employees")
+    emp_info.grid(row=0, column=0)
+    card_info = tkinter.Label(add_window, text="Cards")
+    card_info.grid(row=0, column=1)
+    for i in range(0, len(employees)):
+        emp = employees[i]
+        emp_labels.append(tkinter.Label(add_window, text=f"{emp[1]} {emp[2]}: {emp[3]}"))
+        emp_labels[i].grid(row=(i+1), column=0)
+    for i in range(0,len(cards)):
+        card = cards[i]
+        card_labels.append(tkinter.Label(add_window, text=f"Card id: {card[0]}"))
+        card_labels[i].grid(row=(i+1), column=1)
+    """TODO: two text fields for both ids"""
+    exit = tkinter.Button(add_window, text="Close", command=add_window.destroy)
+    exit.grid(columnspan=2)
+    add_window.mainloop()
 
 
 def delete_RFID_window():
-    pass
+    cards_window = tkinter.Tk()
+    cards_window.title("Delete RFID")
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    employees = cursor.execute("SELECT * FROM employees;").fetchall()
+    connection.close()
+    buttons = []
+    for i in range(0, len(employees)):
+        e = employees[i]
+        buttons.append(tkinter.Button(cards_window, text=f"{e[1]} {e[2]}: {e[3]}",
+                                      command=lambda i=i: delete_RFID(employees[i][0])))
+        buttons[i].pack()
+    exit = tkinter.Button(cards_window, text="Close", command=cards_window.destroy)
+    exit.pack()
+    cards_window.mainloop()
+
+
+def del_terminal_window():
+    term_window = tkinter.Tk()
+    term_window.title("Delete terminal")
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    terminals = cursor.execute("SELECT * FROM terminals;").fetchall()
+    connection.close()
+    buttons = []
+    for i in range(0, len(terminals)):
+        t = terminals[i]
+        buttons.append(tkinter.Button(term_window, text=f"Terminal id: {t[0]}",
+                       command=lambda i=i: remove_terminal(terminals[i][0])))
+        buttons[i].pack()
+    exit = tkinter.Button(term_window, text="Close", command=term_window.destroy)
+    exit.pack()
+    term_window.mainloop()
+
 
 
 if __name__ == "__main__":
-    connect_to_broker()
+    #connect_to_broker()
     generate_main_window()
     window.mainloop()
-    disconnect_from_broker()
+    #disconnect_from_broker()

@@ -35,6 +35,7 @@ def show_users_and_cards():
     connection = sqlite3.connect(db_name)
     cursor = connection.cursor()
     employees = cursor.execute("SELECT * FROM employees;").fetchall()
+    connection.close()
     buttons = []
     for i in range(0, len(employees)):
         e = employees[i]
