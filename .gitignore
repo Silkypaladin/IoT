@@ -2,4 +2,3 @@
 *.db
 logs/
 cards2.txt
-create_database.py
