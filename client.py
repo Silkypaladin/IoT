@@ -4,7 +4,7 @@ import sqlite3
 
 # Instancja klienta, potrzebne id, funkcja pozwalajaca odbic karte,
 # Terminal id, any string
-terminal_id = "T0"
+terminal_id = "T6"
 
 # broker name or ip
 broker = "localhost"

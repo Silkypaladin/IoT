@@ -40,6 +40,7 @@ def add_RFID(emp_id, card_id):
             cursor.execute(
                 f"UPDATE employees SET card_id={card_id} WHERE emp_id={emp_id}")
             connection.commit()
+            print("RFID card added.")
         elif card_ex and card_reg:
             print("Card already registered! Choose another one")
         else:
@@ -168,7 +169,7 @@ def generate_logs(emp_id):
                 writer.writerow([log[4], log[3], log[2]])
             else:
                 date = log[4]
-                writer.writerow()
+                writer.writerow([])
                 writer.writerow([log[4], log[3], log[2]])
 
 
@@ -208,14 +209,20 @@ def generate_main_window():
     add_rfid = tkinter.Button(window, text="Add RFID",command=lambda: add_RFID_window())
     del_rfid = tkinter.Button(window, text="Delete RFID", command=lambda: delete_RFID_window())
     del_term = tkinter.Button(window, text="Delete terminal", command=lambda: del_terminal_window())
+    logs = tkinter.Button(window, text="Generate logs", command=lambda: generate_logs_window())
     exit = tkinter.Button(window, text="Exit", command=window.quit)
     add_rfid.pack()
     del_rfid.pack()
     del_term.pack()
+    logs.pack()
     exit.pack()
 
 
 def add_RFID_window():
+    def click():
+        e_id = emp.get()
+        c_id = card.get()
+        add_RFID(e_id, c_id)
     add_window = tkinter.Tk()
     add_window.title("Add RFID")
     connection = sqlite3.connect(db_name)
@@ -231,14 +238,23 @@ def add_RFID_window():
     card_info.grid(row=0, column=1)
     for i in range(0, len(employees)):
         emp = employees[i]
-        emp_labels.append(tkinter.Label(add_window, text=f"{emp[1]} {emp[2]}: {emp[3]}"))
+        emp_labels.append(tkinter.Label(add_window, text=f"{emp[0]}-{emp[1]} {emp[2]}: {emp[3]}"))
         emp_labels[i].grid(row=(i+1), column=0)
     for i in range(0,len(cards)):
         card = cards[i]
         card_labels.append(tkinter.Label(add_window, text=f"Card id: {card[0]}"))
         card_labels[i].grid(row=(i+1), column=1)
-    """TODO: two text fields for both ids"""
+    l1 = tkinter.Label(add_window, text="Employee id")
+    l2 = tkinter.Label(add_window, text="Card id")
+    emp = tkinter.Entry(add_window)
+    card = tkinter.Entry(add_window)
+    l1.grid(columnspan=2)
+    emp.grid(columnspan=2)
+    l2.grid(columnspan=2)
+    card.grid(columnspan=2)
+    add = tkinter.Button(add_window, text="Add card", command=lambda: click())
     exit = tkinter.Button(add_window, text="Close", command=add_window.destroy)
+    add.grid(columnspan=2)
     exit.grid(columnspan=2)
     add_window.mainloop()
 
@@ -261,6 +277,24 @@ def delete_RFID_window():
     cards_window.mainloop()
 
 
+def generate_logs_window():
+    log_window = tkinter.Tk()
+    log_window.title("Logs")
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    employees = cursor.execute("SELECT * FROM employees;").fetchall()
+    connection.close()
+    buttons = []
+    for i in range(0, len(employees)):
+        e = employees[i]
+        buttons.append(tkinter.Button(log_window, text=f"{e[1]} {e[2]}: {e[3]}",
+                                      command=lambda i=i: generate_logs(employees[i][0])))
+        buttons[i].pack()
+    exit = tkinter.Button(log_window, text="Close", command=log_window.destroy)
+    exit.pack()
+    log_window.mainloop()
+
+
 def del_terminal_window():
     term_window = tkinter.Tk()
     term_window.title("Delete terminal")
@@ -281,7 +315,7 @@ def del_terminal_window():
 
 
 if __name__ == "__main__":
-    #connect_to_broker()
+    connect_to_broker()
     generate_main_window()
     window.mainloop()
-    #disconnect_from_broker()
+    disconnect_from_broker()
