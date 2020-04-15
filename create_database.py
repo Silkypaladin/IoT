@@ -37,7 +37,7 @@ def create_database():
         terminal_id TEXT,
         date TEXT
 );""")
-    insert_data_into_database("employees.txt", "cards2.txt", cursor)
+    insert_data_into_database("employees.txt", "cards.txt", cursor)
     connection.commit()
     connection.close()
     print("The new database created.")
