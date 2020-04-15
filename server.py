@@ -1,222 +1,101 @@
 import uuid
-import random
+import sqlite3
 import time
 import datetime
+import paho.mqtt.client as mqtt
+import tkinter
 import csv
-import glob
-import itertools
+
+db_name = "employees.db"
+broker = "localhost"
+
+client = mqtt.Client()
+window = tkinter.Tk()
 
 
-unregistered_cards = {}
+def delete_RFID(emp_id):
+    try:
+        connection = sqlite3.connect(db_name)
+        cursor = connection.cursor()
+        cursor.execute(
+            f"UPDATE employees SET card_id=NULL WHERE emp_id={emp_id}")
+        connection.commit()
+    except sqlite3.Error as error:
+        print("Failed to update sqlite table", error)
+    finally:
+        if (connection):
+            connection.close()
 
 
-def fetch_data_from_db(filename):
-    # kolejność danych w pliku pracownikow: emp_id, card_id, name, surname
-    # kolejność danych w pliku kart: card_id, emp_id, enter_time, work_time
-    data_dict = dict()
-    file = open(filename, "r")
-    for line in file:
-        fields = line.rstrip('\r\n').split(";")
-        id = fields[0]
-        data_dict[id] = fields[1:]
-    return data_dict
-
-
-def generate_uuid():
-    return uuid.uuid1().hex
-
-
-def delete_RFID(employees, cards, emp_id):
-    if (isinstance(emp_id, int)):
-        emp_id = str(emp_id)
-    if (emp_id in employees):
-        card_id = employees[emp_id][0]
-    else:
-        return False
-    if (isinstance(card_id, int)):
-        card_id = str(card_id)
-    if (emp_id in employees):
-        if (employees[emp_id][0] == "-1"):
-            return True
+def add_RFID(emp_id, card_id):
+    try:
+        connection = sqlite3.connect(db_name)
+        cursor = connection.cursor()
+        # Tuple (1,) if exists (0,) if not
+        card_ex = cursor.execute(
+            f"SELECT EXISTS (SELECT 1 from cards WHERE card_id={card_id});").fetchone()[0]
+        card_reg = cursor.execute(
+            f"SELECT EXISTS (SELECT 1 FROM employees WHERE card_id={card_id});").fetchone()[0]
+        if card_ex and not card_reg:
+            cursor.execute(
+                f"UPDATE employees SET card_id={card_id} WHERE emp_id={emp_id}")
+            connection.commit()
+            print("RFID card added.")
+        elif card_ex and card_reg:
+            print("Card already registered! Choose another one")
         else:
-            employees[emp_id][0] = "-1"
-            cards[card_id][0] = "-1"
-            return True
-    else:
-        return False
+            print("No such card in the database!")
+    except sqlite3.Error as error:
+        print("Failed to update sqlite table", error)
+    finally:
+        if (connection):
+            connection.close()
 
 
-def add_RFID(employees, cards, emp_id, card_id):
-    if (isinstance(emp_id, int)):
-        emp_id = str(emp_id)
-    if (isinstance(card_id, int)):
-        card_id = str(card_id)
-    if (emp_id in employees and card_id in cards):
-        if (employees[emp_id][0] == "-1" and cards[card_id][0] == "-1"):
-            employees[emp_id][0] = card_id
-            cards[card_id][0] = emp_id
-            return True
-        elif (cards[card_id][0] == "-1"):
-            cards[employees[emp_id][0]] = "-1"
-            employees[emp_id][0] = card_id
-            cards[card_id][0] = emp_id
-            return True
-        else:
-            return False
-
-    else:
-        return False
-
-
-def get_employee(employees, emp_id):
-    return employees[emp_id]
-
-
-def save_data_to_db(filename, data):
-    separator = ";"
-    data_line = ""
-    file = open(filename, "w+")
-    for key, values in data.items():
-        data_line += (key+separator)
-        data_line += separator.join(values)
-        file.write(data_line)
-        file.write("\n")
-        data_line = ""
+def get_employee(card_id):
+    # If there is no employee under the card, it returns empty array
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"SELECT * FROM employees WHERE card_id = {card_id}")
+    employee = cursor.fetchall()
+    connection.close()
+    return employee
 
 
 def get_current_time():
     return time.localtime()
 
 
-def print_free_cards(cards):
-    for key in cards:
-        if (cards[key][0] == "-1"):
-            print(f"Id wolnej karty: {key}")
-    print("Podaj id karty, którą chcesz przypisać: ")
-    return get_user_input()
+def verify_card(card_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    card_ex = cursor.execute(
+        f"SELECT EXISTS (SELECT 1 from cards WHERE card_id={card_id});").fetchone()[0]
+    connection.close()
+    return card_ex
 
 
-def print_employees_ids(employees):
-    print("Wybierz pracownika")
-    for key in employees:
-        print(f"Id pracownika: {key} - {employees[key][1]} {employees[key][2]}, id karty: {employees[key][0]}")
-    return get_user_input()
+def save_unregistered_card(card_id, terminal_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"INSERT INTO unknown_cards (card_id, terminal_id, date) VALUES(?, ?, ?)", (card_id, terminal_id, format_time(time.localtime()),))
+    connection.commit()
+    connection.close()
 
 
-def calculate_worktime(start_time, end_time):
-    """
-    param start_time: start of work time in 'h:m:s' format
-    param end_time: end of work time in 'h:m:s' format
-    return: time spent working in 'h:m:s'
-    """
-    start = start_time.split(":")
-    end = end_time.split(":")
-    time = int(end[0]) * 60 + int(end[1]) - int(start[0]) * 60 - int(start[1])
-    minutes = time % 60
-    hours = int((time-minutes)/60)
-    return "{}:{}".format(hours, minutes)
-
-
-def reset_cards_timers(cards):
-    for key, value in cards.items():
-        value[1] = "0"
-        value[2] = "0"
+def verify_terminal(terminal_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    terminal_registered = cursor.execute(f"SELECT EXISTS (SELECT 1 FROM terminals WHERE terminal_id=?);", (terminal_id,)).fetchone()[0]
+    connection.close()
+    return terminal_registered
 
 
 def format_time(wtime):
     """
     param wtime: time as struct_time instance
     """
-    return time.strftime("%H:%M", wtime)
-
-
-def add_new_user(users):
-    name = input('Podaj imię nowego użytkownika: ')
-    surname = input('Podaj nazwisko nowego użytkownika: ')
-    user_id = uuid.uuid1().hex
-    users[user_id] = ['-1', name, surname]
-    print(f'ID nowego uzytkownika to: {user_id}\nPomyślnie dodano użytkownika {name} {surname}')
-
-
-def read_card(cards):
-    # card to krotka, zerowy element jest kluczem karty, pierwszy to tablica
-    card = random.choice(list(cards.items()))
-    if (card[1][0] != -1):
-        if(card[1][1] == '0'):
-            # pracownik odbija się po raz pierwszy
-            card[1][1] = format_time(time.localtime())
-            print(f"Pracownik o id: {card[1][0]} wszedł o godzinie: {card[1][1]}")
-        else:
-            # Pracownik odbija się drugi raz - wychodzi
-            end_time = format_time(time.localtime())
-            print(f"Pracownik o id: {card[1][0]} wychodzi o godzinie: {end_time}")
-            work_time = calculate_worktime(card[1][1], end_time)
-            card[1][2] = work_time
-    else:
-        print(f"Karta niezarejestrowana! Id: {card[0]}")
-
-
-
-def generate_logs(cards, users):
-    today = datetime.datetime.now()
-    date = today.strftime("%d-%m-%Y_%H:%M.txt")
-    filename = "./logs/log_"+date
-    print(f"{filename} log generated.")
-    separator = ";"
-    data_line = ""
-    file = open(filename, "w+")
-    for key, values in users.items():
-        card_id = users[key][0]
-        data_line += (key+separator)
-        data_line += separator.join(values)
-        data_line += (separator)
-        data_line += separator.join(cards[card_id][1:])
-        file.write(data_line)
-        file.write("\n")
-        data_line = ""
-
-
-def generate_work_report(emp_id, employees):
-    lines = []
-    flat_lines = list()
-    elems = []
-    if (isinstance(emp_id, int)):
-        emp_id = str(emp_id)
-    if emp_id not in employees:
-        print("Brak takiego użytkownika!Sprawdź id i spróbuj ponownie.")
-        return False
-    filename = f"report_{employees[emp_id][1]}_{employees[emp_id][2]}.csv"
-    with open(filename, 'w+') as report:
-        writer = csv.writer(report)
-        writer.writerow([f'{employees[emp_id][1]}', f'{employees[emp_id][2]}', datetime.date.today()])
-        writer.writerow(['Id karty', 'Godzina wejścia', 'Ilość przepracowanych godzin'])
-        for log in glob.glob("./logs/*.txt"):
-            with open(log, 'r') as read_log:
-                lines.append(read_log.readlines())
-        flat_lines = list(itertools.chain.from_iterable(lines))
-        for line in flat_lines:
-            elems = line.rstrip('\t\n').split(';')
-            if elems[0] == emp_id:
-                writer.writerow([elems[1], elems[4], elems[5]])
-    return True
-
-
-def startUp(card_file, emp_file):
-    # Tworzymy sobie dwa slowniki na ktorych bedziemy dzialac
-    employees = fetch_data_from_db(emp_file)
-    cards = fetch_data_from_db(card_file)
-
-    return (employees, cards)
-
-
-def display_menu():
-    print('Dostępne operacje. Wciśnij: '
-          '\n1 - dodanie pracownika'
-          '\n2 - przypisanie karty do pracownika'
-          '\n3 - zbliżenie karty'
-          '\n4 - usunięcnie karty pracownikowi'
-          '\n5 - wygenerowanie raportu czasu pracy dla pracownika'
-          '\n0 - zakończenie działania programu')
+    return time.strftime("%H:%M:%S", wtime)
 
 
 def get_user_input():
@@ -225,39 +104,218 @@ def get_user_input():
             choice = int(input('>'))
             break
         except ValueError:
-            print('Podaj liczbę we właściwym formacie')
+            print('Wrong format! Try again.')
     return choice
 
 
-if __name__ == "__main__":
-    employees, cards = startUp("cards.txt", "employees.txt")
-    display_menu()
-    while True:
-        choice = get_user_input()
-
-        if choice == 1:
-            add_new_user(employees)
-        elif choice == 2:
-            cid = print_free_cards(cards)
-            eid = print_employees_ids(employees)
-            if not add_RFID(employees, cards, eid, cid):
-                print("Coś poszło nie tak! Sprawdź id i spróbuj ponownie.")
-            print(employees)
-            print(cards)
-        elif choice == 3:
-            read_card(cards)
-        elif choice == 4:
-            eid = print_employees_ids(employees)
-            if not delete_RFID(employees, cards, eid):
-                print("Coś poszło nie tak! Sprawdź id i spróbuj ponownie.")
-        elif choice == 5:
-            eid = print_employees_ids(employees)
-            print(generate_work_report(eid, employees))
-        elif choice == 0:
-            generate_logs(cards, employees)
-            reset_cards_timers(cards)
-            save_data_to_db("employees.txt", employees)
-            save_data_to_db("cards.txt", cards)
-            break
+def process_message(client, userdata, message):
+    message = (str(message.payload.decode("utf-8"))).split(".")
+    # print(message)
+    if not verify_terminal(message[1]):
+        client.publish("terminal/info", "Not registered.")
+        print(f"Do you want to register new terminal with id: {message[1]}")
+        if get_user_input() == 1:
+            add_terminal(message[1])
+            client.publish("terminal/info", "Registered.")
+            print("Registered new terminal.")
         else:
-            print('Ta opcja nie widnieje w menu')
+            client.publish("terminal/info", "Refused.")
+    else:
+        if message[0] != "Client connected" and message[0] != "Client disconnected" and message[0] != "Client reconnected":
+            if verify_card(message[0]) == 1:
+                # emp to pracownik, na i=0 jest jego id
+                emp = get_employee(message[0])
+                if emp != []:
+                    emp = emp[0]
+                    connection = sqlite3.connect(db_name)
+                    cursor = connection.cursor()
+                    log_time = format_time(time.localtime())
+                    cursor.execute(f"INSERT INTO attendance (emp_id, terminal_id, log_time, date) VALUES(?, ?, ?, ?);",
+                               (emp[0], message[1], log_time, datetime.date.today(),))
+                    print("added log")
+                    connection.commit()
+                    connection.close()
+                else:
+                    print("Card not attached to anyone! Please attach it before usage.")
+            else:
+                print("Card not registered!")
+                save_unregistered_card(message[0], message[1])
+        else:
+            print(message[0] + " : " + message[1])
+
+
+# finish
+def generate_logs(emp_id):
+    connection = sqlite3.Connection(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"SELECT * FROM attendance WHERE emp_id={emp_id}")
+    # user_logs is a list of touples (id,terminal,time,date)
+    user_logs = cursor.fetchall()
+    if user_logs == []:
+        print("No logs for that user!")
+        return
+    cursor.execute(f"SELECT * FROM employees WHERE emp_id={emp_id}")
+    user = cursor.fetchone()
+    connection.close()
+    # Date of log, based on that we write data to file
+    date = user_logs[0][4]
+    filename = f"report_{user[1]}_{user[2]}_{user[0]}.csv"
+    with open(filename, 'w+') as report:
+        writer = csv.writer(report)
+        writer.writerow(["Raport", "czasu", "pracy", f"{user[1]}", f"{user[2]}"])
+        writer.writerow(["Data", "Godzina odbicia karty", "Terminal"])
+        for log in user_logs:
+            if log[4] == date:
+                writer.writerow([log[4], log[3], log[2]])
+            else:
+                date = log[4]
+                writer.writerow([])
+                writer.writerow([log[4], log[3], log[2]])
+
+
+def add_terminal(terminal_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"INSERT INTO terminals VALUES(?);", (terminal_id,))
+    connection.commit()
+    connection.close()
+
+
+def remove_terminal(terminal_id):
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    cursor.execute(f"DELETE FROM terminals WHERE terminal_id=?;", (terminal_id,))
+    connection.commit()
+    connection.close()
+    print(f"Deleted terminal: id {terminal_id}.")
+
+
+def connect_to_broker():
+    client.connect(broker)
+    client.on_message = process_message
+    client.loop_start()
+    client.subscribe("employee/name")
+
+
+def disconnect_from_broker():
+    # Disconnect the client.
+    client.loop_stop()
+    client.disconnect()
+
+
+def generate_main_window():
+    window.geometry("300x200")
+    window.title("Server")
+    add_rfid = tkinter.Button(window, text="Add RFID",command=lambda: add_RFID_window())
+    del_rfid = tkinter.Button(window, text="Delete RFID", command=lambda: delete_RFID_window())
+    del_term = tkinter.Button(window, text="Delete terminal", command=lambda: del_terminal_window())
+    logs = tkinter.Button(window, text="Generate logs", command=lambda: generate_logs_window())
+    exit = tkinter.Button(window, text="Exit", command=window.quit)
+    add_rfid.pack()
+    del_rfid.pack()
+    del_term.pack()
+    logs.pack()
+    exit.pack()
+
+
+def add_RFID_window():
+    def click():
+        e_id = emp.get()
+        c_id = card.get()
+        add_RFID(e_id, c_id)
+    add_window = tkinter.Tk()
+    add_window.title("Add RFID")
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    employees = cursor.execute("SELECT * FROM employees;").fetchall()
+    cards = cursor.execute("SELECT * FROM cards;").fetchall()
+    connection.close()
+    emp_labels = []
+    card_labels = []
+    emp_info = tkinter.Label(add_window, text="Employees")
+    emp_info.grid(row=0, column=0)
+    card_info = tkinter.Label(add_window, text="Cards")
+    card_info.grid(row=0, column=1)
+    for i in range(0, len(employees)):
+        emp = employees[i]
+        emp_labels.append(tkinter.Label(add_window, text=f"{emp[0]}-{emp[1]} {emp[2]}: {emp[3]}"))
+        emp_labels[i].grid(row=(i+1), column=0)
+    for i in range(0,len(cards)):
+        card = cards[i]
+        card_labels.append(tkinter.Label(add_window, text=f"Card id: {card[0]}"))
+        card_labels[i].grid(row=(i+1), column=1)
+    l1 = tkinter.Label(add_window, text="Employee id")
+    l2 = tkinter.Label(add_window, text="Card id")
+    emp = tkinter.Entry(add_window)
+    card = tkinter.Entry(add_window)
+    l1.grid(columnspan=2)
+    emp.grid(columnspan=2)
+    l2.grid(columnspan=2)
+    card.grid(columnspan=2)
+    add = tkinter.Button(add_window, text="Add card", command=lambda: click())
+    exit = tkinter.Button(add_window, text="Close", command=add_window.destroy)
+    add.grid(columnspan=2)
+    exit.grid(columnspan=2)
+    add_window.mainloop()
+
+
+def delete_RFID_window():
+    cards_window = tkinter.Tk()
+    cards_window.title("Delete RFID")
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    employees = cursor.execute("SELECT * FROM employees;").fetchall()
+    connection.close()
+    buttons = []
+    for i in range(0, len(employees)):
+        e = employees[i]
+        buttons.append(tkinter.Button(cards_window, text=f"{e[1]} {e[2]}: {e[3]}",
+                                      command=lambda i=i: delete_RFID(employees[i][0])))
+        buttons[i].pack()
+    exit = tkinter.Button(cards_window, text="Close", command=cards_window.destroy)
+    exit.pack()
+    cards_window.mainloop()
+
+
+def generate_logs_window():
+    log_window = tkinter.Tk()
+    log_window.title("Logs")
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    employees = cursor.execute("SELECT * FROM employees;").fetchall()
+    connection.close()
+    buttons = []
+    for i in range(0, len(employees)):
+        e = employees[i]
+        buttons.append(tkinter.Button(log_window, text=f"{e[1]} {e[2]}: {e[3]}",
+                                      command=lambda i=i: generate_logs(employees[i][0])))
+        buttons[i].pack()
+    exit = tkinter.Button(log_window, text="Close", command=log_window.destroy)
+    exit.pack()
+    log_window.mainloop()
+
+
+def del_terminal_window():
+    term_window = tkinter.Tk()
+    term_window.title("Delete terminal")
+    connection = sqlite3.connect(db_name)
+    cursor = connection.cursor()
+    terminals = cursor.execute("SELECT * FROM terminals;").fetchall()
+    connection.close()
+    buttons = []
+    for i in range(0, len(terminals)):
+        t = terminals[i]
+        buttons.append(tkinter.Button(term_window, text=f"Terminal id: {t[0]}",
+                       command=lambda i=i: remove_terminal(terminals[i][0])))
+        buttons[i].pack()
+    exit = tkinter.Button(term_window, text="Close", command=term_window.destroy)
+    exit.pack()
+    term_window.mainloop()
+
+
+
+if __name__ == "__main__":
+    connect_to_broker()
+    generate_main_window()
+    window.mainloop()
+    disconnect_from_broker()
