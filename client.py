@@ -54,7 +54,7 @@ def create_client_window():
     window.title("Client " + terminal_id)
     button_card = tkinter.Button(window, text="Use card",
                                  command=lambda: show_users_and_cards())
-    button_exit = tkinter.Button(window, text="Exit", command=window.quit)
+    button_exit = tkinter.Button(window, text="Exit", command=lambda:disconnect_from_broker())
     button_card.pack(fill=tkinter.X)
     button_exit.pack(fill=tkinter.X)
 
