@@ -1,13 +1,15 @@
 import paho.mqtt.client as mqtt
 import tkinter
 import sqlite3
+import time
 
 # Instancja klienta, potrzebne id, funkcja pozwalajaca odbic karte,
 # Terminal id, any string
-terminal_id = "T6"
+terminal_id = "T2"
 
 # broker name or ip
-broker = "localhost"
+broker = "PC"
+port = 8883
 
 client = mqtt.Client()
 window = tkinter.Tk()
@@ -21,13 +23,11 @@ def analyze_server_response(client, userdata, message):
         print("Please wait for the server to add you to the database and connect again.")
     elif response == "Registered.":
         print("Terminal registered. Attempting to connect.")
-        client.disconnect()
-        reconnect_to_broker()
+        call_emp("Client reconnected")
     elif response == "Refused.":
         print("Registering refused. Disconnecting")
         client.disconnect()
         window.quit()
-
 
 def show_users_and_cards():
     cards_window = tkinter.Tk()
@@ -54,17 +54,21 @@ def create_client_window():
     window.title("Client " + terminal_id)
     button_card = tkinter.Button(window, text="Use card",
                                  command=lambda: show_users_and_cards())
-    button_exit = tkinter.Button(window, text="Exit", command=window.quit)
+    button_exit = tkinter.Button(window, text="Exit", command=lambda:disconnect_from_broker())
     button_card.pack(fill=tkinter.X)
     button_exit.pack(fill=tkinter.X)
 
 
 def connect_to_broker():
     # Connect to the broker.
-    client.connect(broker)
+    client.tls_set("C:\\Program Files\\mosquitto\\certs\\ca.crt") # provide path to certification
+    # Authenticate
+    client.username_pw_set(username='client', password='client')
+    # Connect to the broker.
+    client.connect(broker, port) # modify connect call by adding port
     client.on_message = analyze_server_response
     client.loop_start()
-    client.subscribe("terminal/info")
+    client.subscribe("server/info")
     # Send message about connection.
     call_emp("Client connected")
 
@@ -74,10 +78,12 @@ def call_emp(card_id):
 
 
 def reconnect_to_broker():
-    client.connect(broker)
+    # Connect to the broker.
+    client.username_pw_set(username='client', password='client')
+    client.connect(broker, port) # modify connect call by adding port
     client.on_message = analyze_server_response
     client.loop_start()
-    client.subscribe("terminal/info")
+    client.subscribe("server/info")
     call_emp("Client reconnected")
 
 
@@ -85,7 +91,7 @@ def disconnect_from_broker():
     # Send message about disconenction.
     call_emp("Client disconnected")
     window.quit()
-    # Disconnet the client.
+    # Disconnect the client.
     client.disconnect()
 
 

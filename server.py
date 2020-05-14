@@ -7,7 +7,8 @@ import tkinter
 import csv
 
 db_name = "employees.db"
-broker = "localhost"
+broker = "PC"
+port = 8883
 
 client = mqtt.Client()
 window = tkinter.Tk()
@@ -112,14 +113,14 @@ def process_message(client, userdata, message):
     message = (str(message.payload.decode("utf-8"))).split(".")
     # print(message)
     if not verify_terminal(message[1]):
-        client.publish("terminal/info", "Not registered.")
+        client.publish("server/info", "Not registered.")
         print(f"Do you want to register new terminal with id: {message[1]}")
         if get_user_input() == 1:
             add_terminal(message[1])
-            client.publish("terminal/info", "Registered.")
+            client.publish("server/info", "Registered.")
             print("Registered new terminal.")
         else:
-            client.publish("terminal/info", "Refused.")
+            client.publish("server/info", "Refused.")
     else:
         if message[0] != "Client connected" and message[0] != "Client disconnected" and message[0] != "Client reconnected":
             if verify_card(message[0]) == 1:
@@ -191,7 +192,11 @@ def remove_terminal(terminal_id):
 
 
 def connect_to_broker():
-    client.connect(broker)
+    # Connect to the broker.
+    client.tls_set("C:\\Program Files\\mosquitto\\certs\\ca.crt")
+    # Authenticate
+    client.username_pw_set(username='server', password='server')
+    client.connect(broker, port)
     client.on_message = process_message
     client.loop_start()
     client.subscribe("employee/name")
