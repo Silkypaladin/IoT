@@ -36,7 +36,7 @@ sudo apt install python3-tk
 to install.
 
 The newest version of the project has security implemented. It uses OpenSSL along with ACL list and authorization. An additional file with configuration instructions is under creation, should appear
-in repo soon. The code won't work without those things configured.
+in repo soon. The code won't work without those things configured. To test no security version, switch to *older-v* branch. Usage instructions given below will work fine then.
 
 ## Usage
 
